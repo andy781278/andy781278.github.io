@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andy Zhu</title>
+<meta name="description" content="Andy Zhu, Computer Science student at UC San Diego. Games, iOS apps, and machine learning projects.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #e9eef2;
+    --grid: #d5dde4;
+    --ink: #17212b;
+    --muted: #55636f;
+    --teal: #0c7a70;
+    --gold: #d9a521;
+    --rose: #c4506a;
+    --panel: #f6f8fa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #141b22;
+      --grid: #1f2a34;
+      --ink: #e4eaef;
+      --muted: #94a3b0;
+      --teal: #3fbcae;
+      --gold: #e8bb45;
+      --rose: #e07890;
+      --panel: #1a232c;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Archivo", system-ui, sans-serif;
+    font-size: 1.0625rem;
+    line-height: 1.55;
+  }
+  a { color: var(--teal); text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
+  a:hover { color: var(--ink); }
+  a:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; border-radius: 2px; }
+
+  /* Hero: a live Circle Empires-style simulation behind the name */
+  .hero {
+    position: relative;
+    min-height: 74vh;
+    display: flex;
+    align-items: flex-end;
+    overflow: hidden;
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  #sim { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .hero-text {
+    position: relative;
+    width: 100%;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 24px 56px;
+  }
+  .hero h1 {
+    margin: 0;
+    font-weight: 800;
+    font-stretch: 125%;
+    font-size: clamp(3.4rem, 11vw, 7.5rem);
+    line-height: 0.92;
+    letter-spacing: -0.02em;
+  }
+  .hero p {
+    margin: 18px 0 0;
+    max-width: 34rem;
+    font-size: 1.2rem;
+    color: var(--ink);
+  }
+  .hero .links { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 6px 22px; font-weight: 600; }
+  .hero-text > * { background: color-mix(in srgb, var(--paper) 82%, transparent); width: fit-content; }
+
+  main { max-width: 960px; margin: 0 auto; padding: 24px 24px 80px; }
+  h2 {
+    font-stretch: 112%;
+    font-weight: 750;
+    font-size: 1.9rem;
+    letter-spacing: -0.01em;
+    margin: 64px 0 20px;
+  }
+  .group-note { color: var(--muted); margin: -12px 0 24px; max-width: 40rem; }
+
+  .project {
+    display: grid;
+    grid-template-columns: 14px 1fr;
+    gap: 0 18px;
+    padding: 22px 0;
+    border-top: 1px solid var(--grid);
+  }
+  .project:last-child { border-bottom: 1px solid var(--grid); }
+  .dot { width: 14px; height: 14px; border-radius: 50%; margin-top: 9px; background: var(--c, var(--teal)); }
+  .project h3 { margin: 0; font-size: 1.3rem; font-weight: 700; font-stretch: 105%; }
+  .project .meta { color: var(--muted); font-size: 0.95rem; margin: 2px 0 8px; }
+  .project p { margin: 0 0 8px; max-width: 42rem; }
+  .project ul { margin: 0 0 8px; padding-left: 1.1em; max-width: 42rem; }
+  .project li { margin: 2px 0; }
+  .project .links { display: flex; flex-wrap: wrap; gap: 4px 18px; font-weight: 600; font-size: 0.97rem; }
+
+  .exp { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; padding: 16px 0; border-top: 1px solid var(--grid); }
+  .exp:last-child { border-bottom: 1px solid var(--grid); }
+  .exp h3 { margin: 0; font-size: 1.1rem; font-weight: 700; }
+  .exp .when { color: var(--muted); font-size: 0.95rem; white-space: nowrap; }
+  .exp p { grid-column: 1 / -1; margin: 2px 0 0; color: var(--ink); max-width: 42rem; }
+
+  .contact { background: var(--panel); border-left: 4px solid var(--gold); padding: 20px 22px; max-width: 42rem; }
+  .contact p { margin: 0 0 6px; }
+  footer { max-width: 960px; margin: 0 auto; padding: 0 24px 40px; color: var(--muted); font-size: 0.9rem; }
+
+  @media (max-width: 560px) {
+    .hero { min-height: 62vh; }
+    .exp { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <canvas id="sim" aria-hidden="true"></canvas>
+  <div class="hero-text">
+    <h1>Andy Zhu</h1>
+    <p>Computer Science student at UC San Diego, graduating June 2027. I build games, iOS apps, and machine learning projects.</p>
+    <div class="links">
+      <a href="https://github.com/andy781278">GitHub</a>
+      <a href="https://andy781278.itch.io">itch.io</a>
+      <a href="https://mod.io/u/charliethegina">mod.io</a>
+      <a href="mailto:zhumeilun0103@gmail.com">Email</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <h2 id="games">Games</h2>
+
+  <article class="project" style="--c: var(--teal)">
+    <span class="dot"></span>
+    <div>
+      <h3>Dice Game</h3>
+      <div class="meta">Online multiplayer, up to 6 players. Godot 4, GDScript.</div>
+      <ul>
+        <li>Host-client networking on Godot's ENet multiplayer API. Players host or join by IP address and port.</li>
+        <li>All game logic runs on the host, which syncs turn order, physics dice results, eliminations, and the shop phase to clients through RPCs.</li>
+      </ul>
+      <div class="links"><a href="https://github.com/andy781278/Dice-Game">Source code</a></div>
+    </div>
+  </article>
+
+  <article class="project" style="--c: var(--rose)">
+    <span class="dot"></span>
+    <div>
+      <h3>Baby Simulator</h3>
+      <div class="meta">3D stealth game for Chill Devs Chill Jam #6. Godot 4, GDScript.</div>
+      <ul>
+        <li>Enemy AI built as a state machine (wander, chase, carry back) that pathfinds between rooms with NavigationAgent3D.</li>
+        <li>The enemy detects the player by raycast line of sight and reacts to noise. Its chase speed scales with how many bottles the player holds.</li>
+        <li>Played on YouTube by a parent-and-child channel. I used their feedback to update the game and fix glitches.</li>
+      </ul>
+      <div class="links"><a href="https://andy781278.itch.io">Play on itch.io</a><a href="https://github.com/andy781278/Baby-Simulator">Source code</a></div>
+    </div>
+  </article>
+
+  <article class="project" style="--c: var(--gold)">
+    <span class="dot"></span>
+    <div>
+      <h3>Baldur's Gate 3 mods</h3>
+      <div class="meta">4 mods on mod.io, about 8,000 unique downloads. BG3 Toolkit.</div>
+      <ul>
+        <li>Minecraft Class: a new playable class with crafting, enchanting, a water bucket fall save, a Totem of Undying, and golden apples.</li>
+        <li>Customize Size Only: lets players change their character's size without changing any other stats.</li>
+      </ul>
+      <div class="links"><a href="https://mod.io/u/charliethegina">See all mods</a></div>
+    </div>
+  </article>
+
+  <article class="project" style="--c: var(--teal)">
+    <span class="dot"></span>
+    <div>
+      <h3>Circle Empires</h3>
+      <div class="meta">2D empire simulation. Godot 4, GDScript.</div>
+      <p>Up to 60 AI nations gather physics-driven resources, grow their population and armies, track relations with neighbors, and go to war. The animation at the top of this page is based on it.</p>
+      <div class="links"><a href="https://github.com/andy781278/Circle-Empires">Source code</a></div>
+    </div>
+  </article>
+
+  <h2 id="software">Software and machine learning</h2>
+
+  <article class="project" style="--c: var(--rose)">
+    <span class="dot"></span>
+    <div>
+      <h3>Dementia Care</h3>
+      <div class="meta">3rd place, c0mpiled-16 UCSD hackathon, October 2026. Swift, SwiftUI, Firebase Firestore.</div>
+      <ul>
+        <li>Patient and caretaker iOS apps on a shared Firestore backend, built with a team.</li>
+        <li>Geofence wander alerts, voice schedule reminders, and low-battery alerts sent from the patient's phone to the caretaker.</li>
+      </ul>
+      <div class="links"><a href="https://github.com/andy781278/DementiaCareHackathon">Source code</a></div>
+    </div>
+  </article>
+
+  <article class="project" style="--c: var(--gold)">
+    <span class="dot"></span>
+    <div>
+      <h3>Science question answering (ARC)</h3>
+      <div class="meta">CSE 151B, Summer 2026. Python, PyTorch, Hugging Face.</div>
+      <ul>
+        <li>Fine-tuned DeBERTa-v3-large on the AI2 Reasoning Challenge.</li>
+        <li>BM25 retrieval alone gave no significant gain. Adding cross-encoder reranking raised ARC-Challenge test accuracy to 74.0% (6-seed mean) and cut variance between seeds by more than half.</li>
+      </ul>
+      <div class="links"><a href="https://github.com/andy781278/CSE151BProject">Source code</a><a href="https://docs.google.com/presentation/d/1U_8r92b0rmfG-Y1q4Qvh99dELYdqJTq-PFHHedsvRaQ/edit">Slides</a></div>
+    </div>
+  </article>
+
+  <article class="project" style="--c: var(--teal)">
+    <span class="dot"></span>
+    <div>
+      <h3>Nachos operating system kernel</h3>
+      <div class="meta">CSE 120, Fall 2026. Java.</div>
+      <p>Implemented thread join, a non-busy-waiting timer alarm, condition variables with timed sleep and cancellation, and a rendezvous primitive. Course code is not public.</p>
+    </div>
+  </article>
+
+  <h2 id="experience">Experience</h2>
+
+  <div class="exp">
+    <h3>Mathnasium, Math Instructor</h3>
+    <span class="when">Sep 2024 to June 2025</span>
+    <p>Taught K-12 math from arithmetic through calculus, adjusting instruction to each student's level.</p>
+  </div>
+  <div class="exp">
+    <h3>ELERT, Co-founder and CTO</h3>
+    <span class="when">2021 to 2022</span>
+    <p>Student startup building a home disaster-alert device and app. Built the Arduino hardware prototype and a Swift iOS prototype. Pitched at the Diamond Challenge, Project Invent, and Project Echo, and was featured in the <a href="https://www.sandiegouniontribune.com/2022/04/09/budding-inventors-showcase-their-ideas-for-impactful-change/">San Diego Union-Tribune</a>.</p>
+  </div>
+
+  <h2 id="contact">Contact</h2>
+  <div class="contact">
+    <p>I'm looking for Summer 2027 internships in game engineering and software engineering.</p>
+    <p><a href="mailto:zhumeilun0103@gmail.com">zhumeilun0103@gmail.com</a></p>
+  </div>
+</main>
+
+<footer>Andy Zhu, 2026</footer>
+
+<script>
+(() => {
+  const canvas = document.getElementById("sim");
+  const ctx = canvas.getContext("2d");
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let W = 0, H = 0, dpr = 1;
+  const css = getComputedStyle(document.documentElement);
+  const colors = ["--teal", "--gold", "--rose"].map(v => css.getPropertyValue(v).trim());
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = canvas.clientWidth; H = canvas.clientHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  window.addEventListener("resize", resize);
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const empires = Array.from({ length: 7 }, (_, i) => ({
+    x: rand(0.1, 0.9), y: rand(0.08, 0.42), r: rand(14, 30),
+    vx: rand(-0.00012, 0.00012), vy: rand(-0.00008, 0.00008),
+    color: colors[i % colors.length]
+  }));
+  let food = [];
+  function spawnFood() {
+    if (food.length < 90) food.push({ x: Math.random(), y: Math.random() * 0.55, vx: 0, vy: 0 });
+  }
+  for (let i = 0; i < 60; i++) spawnFood();
+
+  function step() {
+    for (const e of empires) {
+      e.x += e.vx * 16; e.y += e.vy * 16;
+      if (e.x < 0.04 || e.x > 0.96) e.vx *= -1;
+      if (e.y < 0.04 || e.y > 0.45) e.vy *= -1;
+      e.r = Math.max(12, e.r - 0.004);
+    }
+    for (const f of food) {
+      let best = null, bd = Infinity;
+      for (const e of empires) {
+        const dx = (e.x - f.x) * W, dy = (e.y - f.y) * H, d = Math.hypot(dx, dy);
+        if (d < bd) { bd = d; best = e; }
+      }
+      if (best && bd < best.r * 5) {
+        const pull = 0.6 / Math.max(bd, 1);
+        f.x += (best.x - f.x) * pull; f.y += (best.y - f.y) * pull;
+        if (bd < best.r) { f.eaten = true; best.r = Math.min(46, best.r + 0.6); }
+      }
+    }
+    food = food.filter(f => !f.eaten);
+    if (Math.random() < 0.25) spawnFood();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    for (const f of food) {
+      ctx.globalAlpha = 0.55; ctx.fillStyle = colors[1];
+      ctx.beginPath(); ctx.arc(f.x * W, f.y * H, 2.2, 0, Math.PI * 2); ctx.fill();
+    }
+    for (const e of empires) {
+      ctx.globalAlpha = 0.18; ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(e.x * W, e.y * H, e.r * 1.9, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath(); ctx.arc(e.x * W, e.y * H, e.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function loop() { step(); draw(); requestAnimationFrame(loop); }
+  if (reduce) { for (let i = 0; i < 200; i++) step(); draw(); }
+  else loop();
+})();
+</script>
+</body>
+</html>
