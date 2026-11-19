@@ -56,6 +56,51 @@ header, main, footer { position: relative; z-index: 1; }
   text-shadow: 0 0 10px var(--paper), 0 0 3px var(--paper);
 }
 .sim-note .t { color: var(--teal); font-weight: 600; }
+.how-btn {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; padding: 2px 8px 2px 3px;
+  font: 600 0.8rem "Archivo", system-ui, sans-serif; color: var(--ink);
+  background: color-mix(in srgb, var(--panel) 62%, transparent); backdrop-filter: blur(4px);
+  border: 1px solid var(--grid); border-radius: 999px; cursor: pointer; text-shadow: none;
+}
+.how-btn:hover { background: var(--panel); }
+.how-btn:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.how-btn .q {
+  display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+  background: rgba(23, 33, 43, 0.78); color: #fff; font-weight: 800; font-size: 0.75rem;
+}
+.how-panel {
+  position: absolute; right: 24px; bottom: 52px; z-index: 5;
+  width: min(26rem, calc(100% - 48px)); max-height: calc(100% - 120px); overflow: auto;
+  padding: 14px 18px 12px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(6px);
+  color: var(--ink); border: 1px solid var(--grid); border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  font-size: 0.85rem; line-height: 1.45;
+}
+.how-panel h3 { margin: 10px 0 4px; font-size: 0.9rem; font-weight: 700; }
+.how-panel h3:first-of-type { margin-top: 0; }
+.how-panel ul { margin: 0; padding: 0; list-style: none; }
+.how-panel li { margin: 3px 0; padding-left: 18px; position: relative; }
+.how-panel kbd {
+  font: 600 0.75rem "Archivo", system-ui, sans-serif; padding: 0 5px;
+  border: 1px solid var(--grid); border-bottom-width: 2px; border-radius: 4px; background: var(--paper);
+}
+.how-close {
+  position: sticky; top: 0; float: right; margin: -6px -8px 0 8px;
+  width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent;
+  color: var(--ink); font-size: 1.3rem; line-height: 1; cursor: pointer;
+}
+.how-close:hover { background: var(--grid); }
+.how-close:focus-visible { outline: 3px solid var(--gold); outline-offset: 1px; }
+/* Small color swatches that match what each line describes on the map */
+.sw { position: absolute; left: 0; top: 0.35em; width: 11px; height: 11px; border-radius: 50%; }
+.sw-teal { background: var(--teal); opacity: 0.6; border-radius: 2px; }
+.sw-gold { background: var(--gold); opacity: 0.7; border-radius: 2px; }
+.sw-war { border: 2px solid var(--rose); }
+.sw-sphere { background: color-mix(in srgb, var(--muted) 18%, transparent); border: 1px solid color-mix(in srgb, var(--muted) 45%, transparent); }
+.sw-ally { background: var(--muted); box-shadow: inset 0 0 0 2px #ffd23f; }
+.sw-plague { border: 2px dashed #8a9a1f; }
+.sw-dark { background: #0b1016; opacity: 0.45; }
 .sim-note .g { color: var(--gold); font-weight: 600; }
 .emp-tip {
   position: absolute; z-index: 3; pointer-events: none;

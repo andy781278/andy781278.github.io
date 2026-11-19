@@ -15,7 +15,49 @@
 
 <header class="hero" id="simulation">
   <canvas id="empires" aria-hidden="true"></canvas>
-  <p class="sim-note">A live Circle Empires simulation. Empires research faster in <span class="t">teal</span> areas and grow their population faster in <span class="g">gold</span> areas. Hover over an empire to see its population and tech level. Additionally, you can hold left click to see the exact population growth and research growth values at that location.</p>
+  <p class="sim-note">A live Circle Empires simulation.
+    <button type="button" class="how-btn" aria-expanded="false" aria-controls="how-panel"><span class="q" aria-hidden="true">?</span>How it works</button>
+  </p>
+  <section class="how-panel" id="how-panel" aria-label="How the simulation works" hidden>
+    <button type="button" class="how-close" aria-label="Close">&times;</button>
+    <h3>The map</h3>
+    <ul>
+      <li><span class="sw sw-teal"></span>Empires research faster in teal areas.</li>
+      <li><span class="sw sw-gold"></span>Empires grow their population faster in gold areas.</li>
+      <li>A circle's size shows its population. Power is population times tech level.</li>
+    </ul>
+    <h3>Stability and attrition</h3>
+    <ul>
+      <li>Stability goes from -5 to +5 and drifts at random. Losing a war lowers it.</li>
+      <li>Below 0, an empire can suffer a rebellion, where a piece splits off as rebels, or a revolution, where it breaks into rival factions.</li>
+      <li>War attrition builds up in battles and lowers battle strength. At 80 or more, an empire cannot start wars.</li>
+    </ul>
+    <h3>War</h3>
+    <ul>
+      <li><span class="sw sw-war"></span>Empires that collide may go to war. A red outline and a dashed red line show a war.</li>
+      <li>Each battle is a dice roll weighted by tech, size, stability, and attrition.</li>
+      <li>A much stronger winner can make the loser a puppet. Puppets take their master's color and fight its wars.</li>
+    </ul>
+    <h3>Great powers and diplomacy</h3>
+    <ul>
+      <li><span class="sw sw-sphere"></span>The top 5 empires with at least 10,000 power are great powers. Each has a faint sphere of influence. When two spheres touch, war is likely.</li>
+      <li><span class="sw sw-ally"></span>Nearby empires form alliances, shown by a colored inner ring and the alliance name. At 0 cohesion the alliance breaks. At 100 its members merge into one empire.</li>
+      <li>If one great power becomes too strong, the other great powers form a coalition and go to war with it.</li>
+    </ul>
+    <h3>Events</h3>
+    <ul>
+      <li>One event happens every 100 to 200 seconds.</li>
+      <li><span class="sw sw-plague"></span>Plague kills part of an empire's population and spreads to its neighbors.</li>
+      <li><span class="sw sw-dark"></span>Dark Ages cuts the tech level of every empire in a large area.</li>
+      <li>Pax Romana ends all wars for 10 seconds and doubles population growth.</li>
+    </ul>
+    <h3>Controls</h3>
+    <ul>
+      <li>Hover over an empire to see its stats. Hold left click to see the growth rates at that spot.</li>
+      <li>The arrow in the top left opens the leaderboard. The buttons at the top change the speed.</li>
+      <li>Keys: <kbd>Q</kbd> merges the hovered empire's alliance, <kbd>W</kbd> starts an uprising in it, <kbd>E</kbd> starts a plague, <kbd>R</kbd> starts the Dark Ages at the cursor, and <kbd>T</kbd> starts Pax Romana.</li>
+    </ul>
+  </section>
   <div class="hero-text">
     <h1>Andy Zhu</h1>
     <p>Computer Science student at UC San Diego, graduating June 2027. I build games, iOS apps, and machine learning projects.</p>

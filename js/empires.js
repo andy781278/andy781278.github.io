@@ -864,7 +864,19 @@
   tip.className = "emp-tip";
   tip.hidden = true;
   hero.appendChild(tip);
-  const UI = "a, button, .lb, .speed";
+  const UI = "a, button, .lb, .speed, .how-panel, .sim-note";
+
+  // "How it works" panel: opened by the button next to the sim note, closed by its X button or Escape.
+  const howBtn = hero.querySelector(".how-btn"), howPanel = hero.querySelector(".how-panel");
+  if (howBtn && howPanel) {
+    const setHow = open => {
+      howPanel.hidden = !open;
+      howBtn.setAttribute("aria-expanded", String(open));
+    };
+    howBtn.addEventListener("click", () => setHow(howPanel.hidden));
+    howPanel.querySelector(".how-close")?.addEventListener("click", () => { setHow(false); howBtn.focus(); });
+    window.addEventListener("keydown", e => { if (e.key === "Escape" && !howPanel.hidden) { setHow(false); howBtn.focus(); } });
+  }
   const setPointer = e => {
     if (e.target.closest(UI)) { pointer = null; hovered = null; tip.hidden = true; return; }
     pointer = { cx: e.clientX, cy: e.clientY };
