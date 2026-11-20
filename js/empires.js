@@ -98,7 +98,7 @@
   let eventTimer = 100 + Math.random() * 100;  // seconds until the next random event (100 to 200)
   let darkZone = null;             // last Dark Ages circle, drawn while it fades
   let nextPlagueId = 0;
-  const PAX_GROWTH = 2;
+  const PAX_GROWTH = 2;            // population growth multiplier during Pax Romana
   const PEACE_RATE = 0.15;         // chance per second that a war ends in peace
   // War attrition (0 to 100). Each battle adds about 2 for the winner and about 10 for the loser,
   // more when the enemy is stronger. It falls by 4 per second while the empire is at peace.
@@ -108,8 +108,8 @@
   // Chance that a war ends right after each battle: 25%, plus 0.5% per point of the more worn-out side's attrition
   // (75% at 100 attrition).
   const BATTLE_PEACE = 0.25, BATTLE_PEACE_PER_ATTRITION = 0.005;
-  // Neighbors (overlapping proximity ranges) go to war at 5% per second, lowered by attrition:
-  // 5% x (1 - attrition / 100), using the more worn-out side's attrition (2.5% at 50).
+  // Neighbor wars: each empire that can start a war rolls for its closest neighbor at 5% per second,
+  // lowered by attrition: 5% x (1 - attrition / 100), using the more worn-out side's attrition (2.5% at 50).
   // If either side has 80+ attrition, no war starts.
   const NEIGHBOR_WAR_RATE = 0.05;
   // Limits on neighbor wars (coalition, rebellion, puppet revolt, and revolution wars are exempt):
@@ -136,12 +136,14 @@
   // up to 35 px/s^2 when touching. This breaks up clusters, and lets an empire at war move around the
   // empires between it and its enemy.
   const CROWD_GAP = 40, CROWD_REPEL = 35;
-  // During a coalition, an empire outside the coalition war is pushed away from every coalition member and
-  // every empire on the target's side that it is not itself at war with. The push works within overlapping
-  // proximity ranges and grows to 40 px/s^2 as they get closer.
-  const COALITION_REPEL = 40;
+  // Making way for wars: an empire is pushed away from any empire that is at war, unless the two are at war
+  // with each other. So empires at peace move aside for empires at war, and empires in different wars move
+  // apart. The push works when their edges are within 80 px and grows to 40 px/s^2 as they get closer.
+  const WAR_CLEAR_GAP = 80, WAR_CLEAR_REPEL = 40;
   const BATTLE_KICK = 70;          // extra push apart after each battle, so fighting empires bounce
-  const canStartWar = e => e.attrition < ATTRITION_LOCK;            // population growth multiplier during Pax Romana
+  // Battle strength uses tech^2.2. Each battle's base loss is 2 x (160 + 0.3 x the smaller population).
+  const TECH_EXP = 2.2, BATTLE_LOSS = 2;
+  const canStartWar = e => e.attrition < ATTRITION_LOCK;
   const empirePopulation = e => populationGain(e.x, e.y) * Math.max(0, 1 - radius(e) / rCap()) * (pax > 0 ? PAX_GROWTH : 1);
   const power = e => e.area * e.tech;
   // Great powers: the top 5 empires by power, if they have at least 10,000 power.
@@ -169,7 +171,8 @@
     "Ivory", "Obsidian", "Sun", "Moon", "Storm", "Twin", "High", "Old", "Free"];
   const ALLY_NOUN = ["Pact", "League", "Accord", "Concord", "Union", "Compact", "Covenant", "Coalition", "Entente"];
   let alliances = [], nextAllianceId = 0;
-  const proximity = e => R_SCALE * Math.sqrt(SPHERE_K * power(e) / Math.PI);
+  // Neighbor range: half the radius of a sphere of influence for the same power.
+  const proximity = e => 0.5 * R_SCALE * Math.sqrt(SPHERE_K * power(e) / Math.PI);
   // Puppets. A winner at least 3 times the loser's power may turn the loser into a puppet (8% per battle won).
   // A puppet is part of its master's side: it shares the master's wars, alliance, color, and tech.
   // It does not count as an alliance member for cohesion. When the master leaves an alliance, its puppets go with it.
@@ -234,7 +237,8 @@
       plagued: new Set(), contagious: 0, plagueId: null, attrition: 0,
       ax: x, ay: y, aHeading: rand(0, Math.PI * 2),  // anchor position and its drift direction
       startedWar: null, warCooldown: 0, truce: new Map(),  // neighbor-war limits
-      grow: 0, fade: 1, dead: false, flash: 0, sphere: 0
+      grow: 0, fade: 1, dead: false, flash: 0, sphere: 0,
+      dispR: R_SCALE * Math.sqrt(Math.max(0, area) / Math.PI)  // drawn radius, eased toward the real radius
     };
   }
 
@@ -581,8 +585,8 @@
   // (nx, ny) points from a to b; both empires are pushed apart afterward.
   function battle(a, b, nx, ny) {
     const diff = a.stability - b.stability;
-    const sa = Math.pow(a.tech, 2.2) * radius(a) * (1 + STAB_BONUS * Math.max(0, diff)) * (1 - 0.005 * a.attrition);
-    const sb = Math.pow(b.tech, 2.2) * radius(b) * (1 + STAB_BONUS * Math.max(0, -diff)) * (1 - 0.005 * b.attrition);
+    const sa = Math.pow(a.tech, TECH_EXP) * radius(a) * (1 + STAB_BONUS * Math.max(0, diff)) * (1 - 0.005 * a.attrition);
+    const sb = Math.pow(b.tech, TECH_EXP) * radius(b) * (1 + STAB_BONUS * Math.max(0, -diff)) * (1 - 0.005 * b.attrition);
     const aWins = Math.random() < sa / (sa + sb);
     const winner = aWins ? a : b, loser = aWins ? b : a;
     // Attrition: scaled by the square root of (enemy strength / own strength), limited to 0.5x to 2x.
@@ -594,7 +598,7 @@
     const ma = Math.max(1, a.area), mb = Math.max(1, b.area);
     a.vx -= nx * BATTLE_KICK * mb / (ma + mb); a.vy -= ny * BATTLE_KICK * mb / (ma + mb);
     b.vx += nx * BATTLE_KICK * ma / (ma + mb); b.vy += ny * BATTLE_KICK * ma / (ma + mb);
-    const base = 160 + 0.3 * Math.min(a.area, b.area);
+    const base = BATTLE_LOSS * (160 + 0.3 * Math.min(a.area, b.area));
     const loserLoss = base * 0.75, winnerLoss = base * 0.25;
     loser.area -= loserLoss;
     winner.area += loserLoss * 0.1 - winnerLoss;
@@ -846,12 +850,6 @@
       busySides.add(sideKey(e));
       if (t && !t.dead) busySides.add(sideKey(t));
     }
-    // Empires taking part in the coalition war: coalition members (with their sides) and the target's side.
-    let coalitionWar = null;
-    if (coalition) {
-      const tgt = byId(coalition.target);
-      coalitionWar = new Set(empires.filter(e => !e.dead && (inCoalition(e) || (tgt && sideKey(e) === sideKey(tgt)))).map(e => e.id));
-    }
     // Neighbors (overlapping proximity ranges) may go to war or ally. Allies whose ranges separate are pulled back together.
     for (let i = 0; i < empires.length; i++) for (let j = i + 1; j < empires.length; j++) {
       const a = empires[i], b = empires[j];
@@ -859,14 +857,10 @@
       const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1;
       const inRange = d < proximity(a) + proximity(b);
       const gap = d - radius(a) - radius(b);
-      if (coalitionWar && inRange) {
-        const inA = coalitionWar.has(a.id), inB = coalitionWar.has(b.id);
-        if (inA !== inB && !a.wars.has(b.id)) {
-          // Only the empire outside the coalition war is pushed.
-          const push = COALITION_REPEL * (1 - d / (proximity(a) + proximity(b))) * dt;
-          if (inA) { b.vx += dx / d * push; b.vy += dy / d * push; }
-          else { a.vx -= dx / d * push; a.vy -= dy / d * push; }
-        }
+      if (gap < WAR_CLEAR_GAP && !a.wars.has(b.id) && (a.wars.size || b.wars.size)) {
+        const push = WAR_CLEAR_REPEL * (1 - Math.max(0, gap) / WAR_CLEAR_GAP) * dt;
+        if (a.wars.size) { b.vx += dx / d * push; b.vy += dy / d * push; }  // b makes way for a
+        if (b.wars.size) { a.vx -= dx / d * push; a.vy -= dy / d * push; }  // a makes way for b
       }
       if (gap < CROWD_GAP && !a.wars.has(b.id)) {
         const push = CROWD_REPEL * (1 - Math.max(0, gap) / CROWD_GAP) * dt;
@@ -885,27 +879,31 @@
           b.vx -= dx / d * ALLY_PULL * dt; b.vy -= dy / d * ALLY_PULL * dt;
         }
       } else if (inRange && !a.wars.has(b.id)) {
-        // War between neighbors. Uses the more worn-out side's attrition. No war if either side has 80+.
-        const attrition = Math.max(a.attrition, b.attrition);
-        if (pax <= 0 && canStartWar(a) && canStartWar(b) && !inTruce(a, b) &&
-            !busySides.has(sideKey(a)) && !busySides.has(sideKey(b)) && Math.random() < dt * NEIGHBOR_WAR_RATE * (1 - attrition / 100)) {
-          // One of the two starts it: only an empire with no war of its own running and no cooldown can.
-          const starters = [a, b].filter(x => x.startedWar === null && x.warCooldown <= 0);
-          if (starters.length) {
-            const starter = starters[Math.floor(Math.random() * starters.length)], target = starter === a ? b : a;
-            startWar(starter, target);
-            if (starter.wars.has(target.id)) {
-              starter.startedWar = target.id;
-              busySides.add(sideKey(starter)); busySides.add(sideKey(target));
-            }
-            continue;
-          }
-        }
         // Joining an existing alliance of n members is half as likely for each member: 1/4 for 2 members, 1/8 for 3, and so on.
         const n = Math.max(a.alliance ? a.alliance.members.size : 1, b.alliance ? b.alliance.members.size : 1);
         if (Math.random() < dt * ALLY_RATE * Math.pow(0.5, n === 1 ? 0 : n)) tryAlly(a, b);
       }
     }
+    // Neighbor wars. Each empire that can start a war picks the closest neighbor it could go to war with,
+    // then rolls 5% per second x (1 - attrition / 100), using the more worn-out of the two.
+    for (const e of empires) {
+      if (pax > 0 || e.dead || e.startedWar !== null || e.warCooldown > 0 || !canStartWar(e) || busySides.has(sideKey(e))) continue;
+      let target = null, best = Infinity;
+      for (const o of empires) {
+        if (o === e || o.dead || e.wars.has(o.id) || allied(e, o) || !canStartWar(o) || inTruce(e, o) || busySides.has(sideKey(o))) continue;
+        const d = Math.hypot(o.x - e.x, o.y - e.y);
+        if (d < proximity(e) + proximity(o) && d < best) { best = d; target = o; }
+      }
+      if (!target) continue;
+      if (Math.random() < dt * NEIGHBOR_WAR_RATE * (1 - Math.max(e.attrition, target.attrition) / 100)) {
+        startWar(e, target);
+        if (e.wars.has(target.id)) {
+          e.startedWar = target.id;
+          busySides.add(sideKey(e)); busySides.add(sideKey(target));
+        }
+      }
+    }
+
     for (const al of alliances) {
       for (const id of [...al.members]) { const m = byId(id); if (!m || m.dead) al.members.delete(id); }
       if (al.cohesion >= 100) unify(al);
@@ -973,7 +971,7 @@
 
     for (const e of empires) {
       const ease = e.grow * e.grow * (3 - 2 * e.grow);
-      const r = radius(e) * ease * (e.dead ? Math.max(0, e.fade) : 1);
+      const r = e.dispR * ease * (e.dead ? Math.max(0, e.fade) : 1);
       if (r <= 0.5) continue;
       ctx.globalAlpha = e.dead ? Math.max(0, e.fade) : 0.92;
       ctx.fillStyle = colorOf(e);
@@ -1079,7 +1077,7 @@
     const x = pointer.cx - rect.left, y = pointer.cy - rect.top;
     hovered = null;
     for (const e of empires) {
-      if (!e.dead && Math.hypot(e.x - x, e.y - y) <= radius(e)) hovered = e;
+      if (!e.dead && Math.hypot(e.x - x, e.y - y) <= e.dispR) hovered = e;
     }
     if (!hovered && !holding) { tip.hidden = true; return; }
     let html = "";
@@ -1259,6 +1257,9 @@
       // Faster speeds run more simulation steps per frame. Each step is at most 1/60 s so the physics stays stable.
       const simTime = dt * speed, steps = Math.ceil(simTime / (1 / 60));
       for (let i = 0; i < steps; i++) update(simTime / steps);
+      // Size changes ease out: the drawn radius closes 99% of the gap to the real radius in about 0.8 s.
+      const k = 1 - Math.exp(-6 * dt);
+      for (const e of empires) e.dispR += (radius(e) - e.dispR) * k;
       updateTip(); draw();
       lbTimer += dt;
       if (!lb.hidden && lbTimer > 0.5) { lbTimer = 0; renderLeaderboard(); }

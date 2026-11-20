@@ -11,7 +11,7 @@
     const h = css.getPropertyValue(name).trim().replace("#", "");
     return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16));
   };
-  const palette = [hex("--teal"), hex("--gold"), hex("--rose")];
+  const palette = [hex("--teal"), hex("--gold")];  // dye colors: teal and gold
 
   const DT = 1.0;          // time step in frames
   const VORTICITY = 0.6;  // strength of vorticity confinement (swirl)
@@ -33,8 +33,8 @@
     const size = W2 * (M + 2);
     const f = () => new Float32Array(size);
     u = f(); v = f(); u0 = f(); v0 = f(); p = f(); div = f(); curl = f();
-    dye = [f(), f(), f()];
-    dye0 = [f(), f(), f()];
+    dye = [f(), f()];
+    dye0 = [f(), f()];
     off = document.createElement("canvas");
     off.width = N; off.height = M;
     octx = off.getContext("2d");
@@ -138,13 +138,13 @@
     advect(1, u, u0, u0, v0);
     advect(2, v, v0, u0, v0);
     project();
-    for (let c = 0; c < 3; c++) {
+    for (let c = 0; c < 2; c++) {
       dye0[c].set(dye[c]);
       advect(0, dye[c], dye0[c], u, v);
     }
     for (let k = 0; k < u.length; k++) {
       u[k] *= VEL_DECAY; v[k] *= VEL_DECAY;
-      dye[0][k] *= DYE_DECAY; dye[1][k] *= DYE_DECAY; dye[2][k] *= DYE_DECAY;
+      dye[0][k] *= DYE_DECAY; dye[1][k] *= DYE_DECAY;
     }
   }
 
@@ -153,10 +153,10 @@
     let o = 0;
     for (let j = 1; j <= M; j++) for (let i = 1; i <= N; i++) {
       const k = IX(i, j);
-      const a = dye[0][k], b = dye[1][k], c = dye[2][k];
-      const sum = a + b + c;
+      const a = dye[0][k], b = dye[1][k];
+      const sum = a + b;
       if (sum < 0.004) { data[o + 3] = 0; o += 4; continue; }
-      const col = a >= b && a >= c ? palette[0] : (b >= c ? palette[1] : palette[2]);
+      const col = a >= b ? palette[0] : palette[1];
       data[o] = col[0]; data[o + 1] = col[1]; data[o + 2] = col[2];
       data[o + 3] = Math.min(1, sum * 1.4) * 70;
       o += 4;
@@ -169,7 +169,7 @@
   }
 
   // Pointer input
-  let last = null, lastMove = -1e9, colorIndex = 0, colorDist = 0;
+  let last = null, colorIndex = 0, colorDist = 0;
   window.addEventListener("pointermove", e => {
     const x = e.clientX, y = e.clientY;
     if (last) {
@@ -177,7 +177,7 @@
       const dist = Math.hypot(dx, dy);
       if (dist > 0) {
         colorDist += dist;
-        if (colorDist > 420) { colorDist = 0; colorIndex = (colorIndex + 1) % 3; }
+        if (colorDist > 420) { colorDist = 0; colorIndex = (colorIndex + 1) % 2; }
         const steps = Math.min(8, Math.ceil(dist / (cell * 2)));
         for (let s = 1; s <= steps; s++) {
           const t = s / steps;
@@ -186,21 +186,8 @@
       }
     }
     last = { x, y };
-    lastMove = performance.now();
   });
   document.addEventListener("pointerleave", () => { last = null; });
-
-  // When nobody is moving the pointer, a slow stirrer keeps the fluid alive.
-  let t = 0, prevStir = null;
-  function idleStir(now) {
-    if (now - lastMove < 2500) { prevStir = null; return; }
-    t += 0.008;
-    const W = window.innerWidth, H = window.innerHeight;
-    const x = W * (0.5 + 0.38 * Math.sin(t * 1.3));
-    const y = H * (0.32 + 0.22 * Math.sin(t * 2.1 + 1.0));
-    if (prevStir) splat(x, y, x - prevStir.x, y - prevStir.y, Math.floor(t / 2.2) % 3, 0.05);
-    prevStir = { x, y };
-  }
 
 
   let resizeTimer;
@@ -211,7 +198,7 @@
 
   alloc();
   function loop(now) {
-    idleStir(now); step(); render();
+    step(); render();
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
