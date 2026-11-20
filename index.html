@@ -30,17 +30,18 @@
     <ul>
       <li>Stability goes from -5 to +5 and drifts at random. Losing a war lowers it.</li>
       <li>Below 0, an empire can suffer a rebellion, where a piece splits off as rebels, or a revolution, where it breaks into rival factions.</li>
-      <li>War attrition builds up in battles and lowers battle strength. At 80 or more, an empire cannot start wars.</li>
+      <li>War attrition builds up in battles. It lowers battle strength, makes new wars less likely, and makes wars end sooner. At 80 or more, an empire cannot start or be drawn into new wars.</li>
     </ul>
     <h3>War</h3>
     <ul>
-      <li><span class="sw sw-war"></span>Empires that collide may go to war. A red outline and a dashed red line show a war.</li>
+      <li><span class="sw sw-war"></span>Neighboring empires may go to war: 5% per second, lower with more war attrition. A red outline and a dashed red line show a war. Empires at war fight when they touch.</li>
+      <li>An empire can start only one war at a time. After it ends, the empire waits 10 seconds before starting another, and the two former enemies keep a 20-second truce. Coalition, rebellion, and revolution wars do not count.</li>
       <li>Each battle is a dice roll weighted by tech, size, stability, and attrition.</li>
       <li>A much stronger winner can make the loser a puppet. Puppets take their master's color and fight its wars.</li>
     </ul>
     <h3>Great powers and diplomacy</h3>
     <ul>
-      <li><span class="sw sw-sphere"></span>The top 5 empires with at least 10,000 power are great powers. Each has a faint sphere of influence. When two spheres touch, war is likely.</li>
+      <li><span class="sw sw-sphere"></span>The top 5 empires with at least 10,000 power are great powers. Each has a faint sphere of influence that shows how far its reach extends.</li>
       <li><span class="sw sw-ally"></span>Nearby empires form alliances, shown by a colored inner ring and the alliance name. At 0 cohesion the alliance breaks. At 100 its members merge into one empire.</li>
       <li>If one great power becomes too strong, the other great powers form a coalition and go to war with it.</li>
     </ul>

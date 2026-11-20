@@ -1,4 +1,4 @@
-// Circle Empires simulation at the top of the page. Empires drift, collide, and may go to war.
+// Circle Empires simulation at the top of the page. Empires drift and bounce off each other, and neighbors may go to war.
 // Two Perlin noise fields set how fast each empire researches (teal) and expands (gold).
 (() => {
   const hero = document.querySelector(".hero");
@@ -76,11 +76,14 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     techImg = fieldImage(techField, TEAL);
     popImg = fieldImage(popField, GOLD);
-    for (const e of empires) { e.x = Math.min(Math.max(e.x, 20), W - 20); e.y = Math.min(Math.max(e.y, 20), H - 20); }
+    for (const e of empires) {
+      e.x = Math.min(Math.max(e.x, 20), W - 20); e.y = Math.min(Math.max(e.y, 20), H - 20);
+      e.ax = Math.min(Math.max(e.ax, ANCHOR_MARGIN), W - ANCHOR_MARGIN); e.ay = Math.min(Math.max(e.ay, ANCHOR_MARGIN), H - ANCHOR_MARGIN);
+    }
   }
 
   // ----- Empires -----
-  const MAX = 20;
+  const MAX = 15;
   // Drawn radius per population. 1.5 makes circles and spheres 50% wider for the same population and power.
   const R_SCALE = 1.5;
   // Growth stops at this radius. Scaled with R_SCALE so the population cap stays the same.
@@ -97,12 +100,46 @@
   let nextPlagueId = 0;
   const PAX_GROWTH = 2;
   const PEACE_RATE = 0.15;         // chance per second that a war ends in peace
-  // War attrition (0 to 100). Each battle adds about 1 for the winner and about 5 for the loser,
-  // more when the enemy is stronger. It falls by 2 per second while the empire is at peace.
+  // War attrition (0 to 100). Each battle adds about 2 for the winner and about 10 for the loser,
+  // more when the enemy is stronger. It falls by 4 per second while the empire is at peace.
   // Each point lowers battle strength by 0.5%. At 80 or more, the empire cannot start wars,
   // and rebellions against it succeed without a fight.
-  const ATTRITION_WIN = 1, ATTRITION_LOSS = 5, ATTRITION_DECAY = 2, ATTRITION_LOCK = 80;
-  const BATTLE_PEACE = 0.25;       // chance that a war ends right after each battle
+  const ATTRITION_WIN = 2, ATTRITION_LOSS = 10, ATTRITION_DECAY = 4, ATTRITION_LOCK = 80;
+  // Chance that a war ends right after each battle: 25%, plus 0.5% per point of the more worn-out side's attrition
+  // (75% at 100 attrition).
+  const BATTLE_PEACE = 0.25, BATTLE_PEACE_PER_ATTRITION = 0.005;
+  // Neighbors (overlapping proximity ranges) go to war at 5% per second, lowered by attrition:
+  // 5% x (1 - attrition / 100), using the more worn-out side's attrition (2.5% at 50).
+  // If either side has 80+ attrition, no war starts.
+  const NEIGHBOR_WAR_RATE = 0.05;
+  // Limits on neighbor wars (coalition, rebellion, puppet revolt, and revolution wars are exempt):
+  // a side (an empire with its alliance and puppets) can be in only 1 neighbor war at a time, as attacker or
+  // defender. After a war it started ends, an empire waits 10 seconds before starting another.
+  // Two empires whose war just ended have a 20-second truce.
+  const WAR_COOLDOWN = 10, TRUCE = 20;
+  const inTruce = (a, b) => (a.truce.get(b.id) ?? -1) > clock;
+  // Above 50 attrition, an empire is pushed away from its neighbors. The push grows from 0 at 50 attrition
+  // to 5 px/s^2 at 100 attrition.
+  const ATTRITION_REPEL = 5;
+  const WAR_PULL = 60;    // pull (px/s^2) toward the nearest enemy
+  const SPEED_REF_R = 35; // radius at which an empire moves at the base speed
+  // Steering around empires it does not want to fight. Each empire casts 5 rays ahead along its direction of
+  // motion (0, +/-25, +/-50 degrees), each (radius + 70 px) long. A ray hits another empire if it passes within
+  // the two radii combined (plus 6 px). Enemies are ignored, since it wants to reach them. The closest hit
+  // pushes the empire sideways, away from the side the blocker is on, up to 70 px/s^2 for a very close hit.
+  const RAY_ANGLES = [0, -0.44, 0.44, -0.87, 0.87], RAY_REACH = 70, AVOID = 70;
+  // Anchors. Each empire has an invisible anchor that drifts at 2.5 px/s in a slowly turning random direction
+  // and stays at least 60 px from the edges. At peace, an empire is always pulled toward its anchor with a force
+  // proportional to the distance: 0.2 px/s^2 per px (20 px/s^2 at 100 px away). At war, the anchor has no effect.
+  const ANCHOR_SPEED = 2.5, ANCHOR_MARGIN = 60, ANCHOR_PULL = 0.2;
+  // Crowding: empires that are not at war with each other push apart when their edges are within 40 px,
+  // up to 35 px/s^2 when touching. This breaks up clusters, and lets an empire at war move around the
+  // empires between it and its enemy.
+  const CROWD_GAP = 40, CROWD_REPEL = 35;
+  // During a coalition, an empire outside the coalition war is pushed away from every coalition member and
+  // every empire on the target's side that it is not itself at war with. The push works within overlapping
+  // proximity ranges and grows to 40 px/s^2 as they get closer.
+  const COALITION_REPEL = 40;
   const BATTLE_KICK = 70;          // extra push apart after each battle, so fighting empires bounce
   const canStartWar = e => e.attrition < ATTRITION_LOCK;            // population growth multiplier during Pax Romana
   const empirePopulation = e => populationGain(e.x, e.y) * Math.max(0, 1 - radius(e) / rCap()) * (pax > 0 ? PAX_GROWTH : 1);
@@ -111,7 +148,6 @@
   // Each great power has a sphere of influence whose area is proportional to its power.
   const GP_COUNT = 5, GP_MIN = 10000;
   const SPHERE_K = 1;  // sphere area per point of power
-  const SPHERE_WAR_CHANCE = 0.85;  // chance of war when two spheres first touch
   const sphereTarget = e => R_SCALE * Math.sqrt(SPHERE_K * power(e) / Math.PI);
   let greatPowers = new Set();
   // Stability: -5 to +5. It moves 1 step up or down at random every 1 to 15 seconds.
@@ -124,8 +160,9 @@
   // Two empires whose ranges overlap may ally. Allies share wars and never fight each other.
   // Cohesion (0 to 100) walks 5 every 1 to 5 seconds. Larger alliances drift down more often.
   // At 0 the alliance breaks. At 100 the members combine into one empire.
-  const ALLY_RATE = 0.04;      // chance per second for two empires in range to ally
+  const ALLY_RATE = 0.01;      // chance per second for two empires in range to ally
   const ALLY_PULL = 8;         // pull between allies whose ranges no longer overlap
+  const ALLY_FAR_MIN = 300, ALLY_FAR_DROP = 8;  // allies very far apart: cohesion -8 per second
   // Light, saturated colors so alliance names stay readable over a dark outline. Red is left out because it marks war.
   const ALLY_COLORS = ["#ffd23f", "#8ef26b", "#4cd8ff", "#8fb0ff", "#c9a3ff", "#ffa94d", "#3ef0c0", "#ff8ae6", "#e8c39e", "#ffffff"];
   const ALLY_ADJ = ["Iron", "Silver", "Golden", "Northern", "Southern", "Eastern", "Western", "Azure", "Emerald",
@@ -191,10 +228,12 @@
     return {
       id: nextId++, name, baseName, prefix, x, y, vx: rand(-8, 8), vy: rand(-8, 8),
       area, tech, colorIndex, heading: rand(0, Math.PI * 2),
-      wars: new Set(), met: new Map(), lastHit: new Map(), touching: new Set(),
+      wars: new Set(), directWars: new Set(), lastHit: new Map(),
       warNet: new Map(), stability: 0, stabTimer: rand(1, 15), alliance: null,
       rebelOf: null, revRivals: new Set(), revPeace: false, master: null, revoltFrom: null,
       plagued: new Set(), contagious: 0, plagueId: null, attrition: 0,
+      ax: x, ay: y, aHeading: rand(0, Math.PI * 2),  // anchor position and its drift direction
+      startedWar: null, warCooldown: 0, truce: new Map(),  // neighbor-war limits
       grow: 0, fade: 1, dead: false, flash: 0, sphere: 0
     };
   }
@@ -211,18 +250,27 @@
     }
   }
 
-  function pairWar(a, b) {
+  // direct = true for the two empires a war is actually between (attacker and defender, rebels and the
+  // empire they rebel against, revolution factions, a coalition member and its target). Allies pulled in
+  // are not direct, and do not lose stability when they lose.
+  function pairWar(a, b, direct = false) {
     if (pax > 0) return;  // no wars can start during Pax Romana
     a.wars.add(b.id); b.wars.add(a.id);
     a.warNet.set(b.id, 0); b.warNet.set(a.id, 0);
+    if (direct) { a.directWars.add(b.id); b.directWars.add(a.id); }
     a.flash = b.flash = 1;
   }
-  // A war between two empires pulls in both of their alliances. Every member of one side is at war with every member of the other.
+  // A war between two empires pulls in both of their sides (alliances and puppets).
+  // Each ally of a goes to war with b, and each ally of b goes to war with a. Allies of the two sides
+  // do not fight each other directly, so a 3-member side against a 3-member side makes 5 wars, not 9.
+  // Side members with 80+ attrition sit the war out. a and b themselves are always included.
   function startWar(a, b) {
     if (allied(a, b)) return;
-    for (const x of membersOf(a)) for (const y of membersOf(b)) {
-      if (x !== y && !allied(x, y) && !x.wars.has(y.id)) pairWar(x, y);
-    }
+    const joins = e => e.attrition < ATTRITION_LOCK;
+    const pair = (x, y, direct = false) => { if (x !== y && !allied(x, y) && !x.wars.has(y.id)) pairWar(x, y, direct); };
+    pair(a, b, true);
+    for (const x of membersOf(a)) if (x !== a && joins(x)) pair(x, b);
+    for (const y of membersOf(b)) if (y !== b && joins(y)) pair(a, y);
   }
   const changeCohesion = (e, amount) => {
     if (e && e.alliance) e.alliance.cohesion = Math.max(0, Math.min(100, e.alliance.cohesion + amount));
@@ -236,12 +284,14 @@
     const loser = !scored ? null : na < nb ? a : nb < na ? b : null;
     if (loser) {
       const winner = loser === a ? b : a;
-      loser.stability = clampStab(loser.stability - 1);
+      if (loser.directWars.has(winner.id)) loser.stability = clampStab(loser.stability - 1);  // only for its own war
       changeCohesion(loser, -10);
       changeCohesion(winner, 10);
     }
     a.wars.delete(b.id); b.wars.delete(a.id);
+    a.truce.set(b.id, clock + TRUCE); b.truce.set(a.id, clock + TRUCE);
     a.warNet.delete(b.id); b.warNet.delete(a.id);
+    a.directWars.delete(b.id); b.directWars.delete(a.id);
     // Rebels that survive their war of independence take a new name.
     if (a.rebelOf === b.id) renameRebels(a);
     if (b.rebelOf === a.id) renameRebels(b);
@@ -268,7 +318,7 @@
   function removeEmpire(e) {
     e.dead = true;
     leaveAlliance(e);
-    for (const id of e.wars) { const o = byId(id); if (o) { o.wars.delete(e.id); o.warNet.delete(e.id); } }
+    for (const id of e.wars) { const o = byId(id); if (o) { o.wars.delete(e.id); o.warNet.delete(e.id); o.directWars.delete(e.id); } }
     e.wars.clear();
     for (const x of empires) {
       if (x.dead) continue;
@@ -358,9 +408,9 @@
   }
 
   // ----- Rebellion and revolution -----
-  // Below 0 stability, an uprising can happen: 0.4% per second at -1, up to 2% per second at -5.
+  // Below 0 stability, an uprising can happen: 0.1% per second at -1, up to 0.5% per second at -5.
   // 80% of uprisings are rebellions and 20% are revolutions.
-  const REBEL_RATE = 0.02, REVOLUTION_CHANCE = 0.2;
+  const REBEL_RATE = 0.005, REVOLUTION_CHANCE = 0.2;
   const PREFIXES = ["Nationalist", "Monarchist", "Republican", "Socialist", "Imperial", "Federal",
     "Theocratic", "Democratic", "People's", "Free", "United", "Restored"];
   const aliveCount = () => empires.filter(e => !e.dead).length;
@@ -425,8 +475,39 @@
     for (const a of factions) for (const b of factions) {
       if (a === b) continue;
       a.revRivals.add(b.id);
-      if (!a.wars.has(b.id)) pairWar(a, b);
+      if (!a.wars.has(b.id)) pairWar(a, b, true);
     }
+  }
+
+  // Ray steering (see AVOID above).
+  function steer(e, dt) {
+    const sp = Math.hypot(e.vx, e.vy);
+    if (sp < 1) return;
+    const dx = e.vx / sp, dy = e.vy / sp, re = radius(e), len = re + RAY_REACH;
+    let best = 0, side = 0;
+    for (const o of empires) {
+      if (o === e || o.dead || e.wars.has(o.id)) continue;
+      const ox = o.x - e.x, oy = o.y - e.y, R = re + radius(o) + 6;
+      if (Math.hypot(ox, oy) > len + R) continue;
+      for (const ang of RAY_ANGLES) {
+        const c = Math.cos(ang), s = Math.sin(ang);
+        const rx = dx * c - dy * s, ry = dx * s + dy * c;   // ray direction
+        const along = ox * rx + oy * ry;                      // distance along the ray to the closest point
+        if (along < 0) continue;
+        const perp2 = ox * ox + oy * oy - along * along;
+        if (perp2 > R * R) continue;
+        const hit = along - Math.sqrt(R * R - perp2);         // distance where the ray enters the blocker
+        const w = (1 - Math.max(0, hit) / len) * Math.cos(ang); // closer and more head-on hits count more
+        if (w > best) {
+          best = w;
+          side = (dx * oy - dy * ox) > 0 ? 1 : -1;            // steer to the opposite side from the blocker
+        }
+      }
+    }
+    if (best <= 0) return;
+    // Sideways direction: the motion direction rotated 90 degrees, away from the blocker (screen y points down).
+    const px = side > 0 ? dy : -dy, py = side > 0 ? -dx : dx;
+    e.vx += px * AVOID * best * dt; e.vy += py * AVOID * best * dt;
   }
 
   // ----- Random events -----
@@ -525,7 +606,8 @@
     if (!loser.dead && !winner.dead && power(winner) >= PUPPET_RATIO * power(loser) && Math.random() < PUPPET_CHANCE) {
       makePuppet(loser, root(winner), winner);
     }
-    if (!a.dead && !b.dead && a.wars.has(b.id) && Math.random() < BATTLE_PEACE) endWar(a, b);
+    const peace = BATTLE_PEACE + BATTLE_PEACE_PER_ATTRITION * Math.max(a.attrition, b.attrition);
+    if (!a.dead && !b.dead && a.wars.has(b.id) && Math.random() < peace) endWar(a, b);
   }
 
   function update(dt) {
@@ -560,6 +642,15 @@
     // The weight of stepping down doubles with each member past 2. Up has weight 1.
     // 2 members: 1 to 1 (50% down). 3 members: 2 to 1 (67%). 4 members: 4 to 1 (80%). 5 members: 8 to 1 (89%).
     for (const al of alliances) {
+      // Distance: if any two members are very far apart (centers more than twice their combined proximity
+      // ranges apart, and at least 300 px), cohesion falls by 8 per second.
+      const ms = [...al.members].map(byId).filter(m => m && !m.dead);
+      al.far = false;
+      for (let i = 0; i < ms.length && !al.far; i++) for (let j = i + 1; j < ms.length; j++) {
+        const limit = Math.max(ALLY_FAR_MIN, 2 * (proximity(ms[i]) + proximity(ms[j])));
+        if (Math.hypot(ms[i].x - ms[j].x, ms[i].y - ms[j].y) > limit) { al.far = true; break; }
+      }
+      if (al.far) al.cohesion = Math.max(0, al.cohesion - ALLY_FAR_DROP * dt);
       al.timer -= dt;
       if (al.timer > 0) continue;
       al.timer = rand(1, 5);
@@ -578,6 +669,8 @@
     // Coalition. With 5 great powers: if one great power (not a puppet) plus its puppets has more than double
     // the average power of the other great powers, there is a 5% chance per second that those great powers
     // form a temporary alliance and all go to war with it. Great powers on the strong empire's side are not counted.
+    // The other great powers also count their puppets. A puppet that is itself one of those great powers is counted
+    // once, inside its master's total.
     const gps = [...greatPowers].map(byId).filter(e => e && !e.dead);
     if (coalition) {
       const g = byId(coalition.target);
@@ -601,8 +694,9 @@
     } else if (pax <= 0 && gps.length === GP_COUNT) {
       const g = gps.filter(e => e.master === null).sort((a, b) => blocPower(b) - blocPower(a))[0];
       const rest = g ? gps.filter(o => o !== g && sideKey(o) !== sideKey(g)) : [];
-      if (rest.length) {
-        const avg = rest.reduce((sum, o) => sum + power(o), 0) / rest.length;
+      if (rest.length && canStartWar(g)) {  // no coalition against a target with 80+ attrition
+        const counted = rest.filter(o => !(o.master !== null && rest.some(m => m.id === o.master)));
+        const avg = counted.reduce((sum, o) => sum + (o.master === null ? blocPower(o) : power(o)), 0) / counted.length;
         if (blocPower(g) > 2 * avg && Math.random() < dt * 0.05) {
           coalition = { target: g.id, members: new Set(rest.map(o => o.id)) };
           announce(`Coalition forms against ${g.name}`);
@@ -618,6 +712,9 @@
       e.tech += dt * empireResearch(e);
       e.area += dt * empirePopulation(e);
       if (!e.wars.size) e.attrition = Math.max(0, e.attrition - dt * ATTRITION_DECAY);
+      // The war this empire started has ended (any way): start the 10-second cooldown.
+      if (e.startedWar !== null && !e.wars.has(e.startedWar)) { e.startedWar = null; e.warCooldown = WAR_COOLDOWN; }
+      e.warCooldown = Math.max(0, e.warCooldown - dt);
       e.stabTimer -= dt;
       if (e.stabTimer <= 0) {
         // At peace, a step toward 0 gets 20% more weight per point of stability away from 0.
@@ -630,20 +727,53 @@
       }
 
       e.heading += (Math.random() - 0.5) * 2.5 * dt;
-      e.vx += Math.cos(e.heading) * 10 * dt;
-      e.vy += Math.sin(e.heading) * 10 * dt;
+      // Anchor drift. Near an edge, the anchor turns toward the middle of the map.
+      e.aHeading += (Math.random() - 0.5) * 1.5 * dt;
+      e.ax += Math.cos(e.aHeading) * ANCHOR_SPEED * dt;
+      e.ay += Math.sin(e.aHeading) * ANCHOR_SPEED * dt;
+      const nearEdge = e.ax < ANCHOR_MARGIN * 1.5 || e.ax > W - ANCHOR_MARGIN * 1.5 ||
+                       e.ay < ANCHOR_MARGIN * 1.5 || e.ay > H - ANCHOR_MARGIN * 1.5;
+      if (nearEdge) {
+        const toCenter = Math.atan2(H / 2 - e.ay, W / 2 - e.ax);
+        let turn = toCenter - e.aHeading;
+        turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+        e.aHeading += turn * Math.min(1, 2 * dt);
+      }
+      e.ax = Math.min(Math.max(e.ax, ANCHOR_MARGIN), W - ANCHOR_MARGIN);
+      e.ay = Math.min(Math.max(e.ay, ANCHOR_MARGIN), H - ANCHOR_MARGIN);
+      // Anchor pull, only at peace.
+      if (!e.wars.size) {
+        e.vx += (e.ax - e.x) * ANCHOR_PULL * dt;
+        e.vy += (e.ay - e.y) * ANCHOR_PULL * dt;
+      }
+
+      const agility = Math.min(1.6, Math.max(0.5, Math.sqrt(SPEED_REF_R / Math.max(1, radius(e)))));
+      e.vx += Math.cos(e.heading) * 5 * agility * dt;
+      e.vy += Math.sin(e.heading) * 5 * agility * dt;
+      // War movement: pulled toward the nearest enemy only, at 60 px/s^2. Pulling toward every enemy at once made
+      // alliance wars collapse into one cluster around the middle of all the enemies.
+      let target = null, targetD = Infinity;
       for (const id of [...e.wars]) {
         const o = byId(id);
         if (!o || o.dead) { e.wars.delete(id); continue; }
         // Peace: each war has a 15% chance per second to end (rolled once per pair, by the empire with the lower id).
         if (e.id < o.id && Math.random() < dt * PEACE_RATE) { endWar(e, o); continue; }
-        const dx = o.x - e.x, dy = o.y - e.y, d = Math.hypot(dx, dy) || 1;
-        e.vx += dx / d * 30 * dt; e.vy += dy / d * 30 * dt;
+        const d = Math.hypot(o.x - e.x, o.y - e.y);
+        if (d < targetD) { targetD = d; target = o; }
       }
-      e.vx *= 1 - 0.5 * dt; e.vy *= 1 - 0.5 * dt;
-      const sp = Math.hypot(e.vx, e.vy), max = e.wars.size ? 40 : 14, min = 5;
-      if (sp > max) { e.vx *= max / sp; e.vy *= max / sp; }
-      else if (sp < min && sp > 0) { e.vx *= min / sp; e.vy *= min / sp; }
+      if (target) {
+        const dx = target.x - e.x, dy = target.y - e.y, d = targetD || 1;
+        e.vx += dx / d * WAR_PULL * dt; e.vy += dy / d * WAR_PULL * dt;
+      }
+      steer(e, dt);
+      // No top speed. Speed is limited only by drag, and drag scales with size: the size factor is
+      // sqrt(35 / radius), limited to 0.5x to 1.6x, and drag is 0.5 / sizeFactor per second. A smaller empire
+      // has less drag, so the same pushes move it faster. Minimum speed is 2.5 px/s times the size factor.
+      const sf = Math.min(1.6, Math.max(0.5, Math.sqrt(SPEED_REF_R / Math.max(1, radius(e)))));
+      const drag = Math.min(1, 0.5 / sf * dt);
+      e.vx *= 1 - drag; e.vy *= 1 - drag;
+      const sp = Math.hypot(e.vx, e.vy), min = 2.5 * sf;
+      if (sp < min && sp > 0) { e.vx *= min / sp; e.vy *= min / sp; }
       e.x += e.vx * dt; e.y += e.vy * dt;
       const r = radius(e);
       if (e.x < r) { e.x = r; e.vx = Math.abs(e.vx); e.heading = Math.PI - e.heading; }
@@ -687,7 +817,7 @@
       }
     }
 
-    // Collisions: elastic bounce weighted by area; may start a war or fight a battle.
+    // Collisions: elastic bounce weighted by area. Empires at war fight a battle when they touch.
     for (let i = 0; i < empires.length; i++) for (let j = i + 1; j < empires.length; j++) {
       const a = empires[i], b = empires[j];
       if (a.dead || b.dead) continue;
@@ -702,40 +832,75 @@
         a.vx -= imp * nx / ma; a.vy -= imp * ny / ma;
         b.vx += imp * nx / mb; b.vy += imp * ny / mb;
       }
-      if (!a.wars.has(b.id)) {
-        if (clock - (a.met.get(b.id) ?? -99) > 3) {
-          a.met.set(b.id, clock);
-          if (Math.random() < 0.45 && (canStartWar(a) || canStartWar(b))) startWar(a, b);
-        }
-      } else if (clock - (a.lastHit.get(b.id) ?? -99) > 0.35) {
+      // Empires at war fight a battle when they touch, at most once every 0.35 seconds.
+      if (a.wars.has(b.id) && clock - (a.lastHit.get(b.id) ?? -99) > 0.35) {
         a.lastHit.set(b.id, clock);
         battle(a, b, nx, ny);
       }
     }
-    // Spheres of influence: when two spheres start touching, there is a high chance of war.
-    // The roll happens once per contact. The spheres must separate before another roll.
-    for (let i = 0; i < empires.length; i++) for (let j = i + 1; j < empires.length; j++) {
-      const a = empires[i], b = empires[j];
-      if (a.dead || b.dead) continue;
-      const touching = greatPowers.has(a.id) && greatPowers.has(b.id) &&
-        Math.hypot(b.x - a.x, b.y - a.y) < a.sphere + b.sphere;
-      if (!touching) { a.touching.delete(b.id); continue; }
-      if (a.touching.has(b.id)) continue;
-      a.touching.add(b.id);
-      if (!a.wars.has(b.id) && Math.random() < SPHERE_WAR_CHANCE && (canStartWar(a) || canStartWar(b))) startWar(a, b);
+    // Sides already in a neighbor war (as attacker or defender) cannot start or be targeted by another.
+    const busySides = new Set();
+    for (const e of empires) {
+      if (e.dead || e.startedWar === null || !e.wars.has(e.startedWar)) continue;
+      const t = byId(e.startedWar);
+      busySides.add(sideKey(e));
+      if (t && !t.dead) busySides.add(sideKey(t));
     }
-    // Alliances: empires whose proximity ranges overlap may ally. Allies whose ranges separate are pulled back together.
+    // Empires taking part in the coalition war: coalition members (with their sides) and the target's side.
+    let coalitionWar = null;
+    if (coalition) {
+      const tgt = byId(coalition.target);
+      coalitionWar = new Set(empires.filter(e => !e.dead && (inCoalition(e) || (tgt && sideKey(e) === sideKey(tgt)))).map(e => e.id));
+    }
+    // Neighbors (overlapping proximity ranges) may go to war or ally. Allies whose ranges separate are pulled back together.
     for (let i = 0; i < empires.length; i++) for (let j = i + 1; j < empires.length; j++) {
       const a = empires[i], b = empires[j];
       if (a.dead || b.dead) continue;
       const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1;
       const inRange = d < proximity(a) + proximity(b);
+      const gap = d - radius(a) - radius(b);
+      if (coalitionWar && inRange) {
+        const inA = coalitionWar.has(a.id), inB = coalitionWar.has(b.id);
+        if (inA !== inB && !a.wars.has(b.id)) {
+          // Only the empire outside the coalition war is pushed.
+          const push = COALITION_REPEL * (1 - d / (proximity(a) + proximity(b))) * dt;
+          if (inA) { b.vx += dx / d * push; b.vy += dy / d * push; }
+          else { a.vx -= dx / d * push; a.vy -= dy / d * push; }
+        }
+      }
+      if (gap < CROWD_GAP && !a.wars.has(b.id)) {
+        const push = CROWD_REPEL * (1 - Math.max(0, gap) / CROWD_GAP) * dt;
+        a.vx -= dx / d * push; a.vy -= dy / d * push;
+        b.vx += dx / d * push; b.vy += dy / d * push;
+      }
+      if (inRange) {
+        const pa = ATTRITION_REPEL * Math.max(0, (a.attrition - 50) / 50);
+        const pb = ATTRITION_REPEL * Math.max(0, (b.attrition - 50) / 50);
+        a.vx -= dx / d * pa * dt; a.vy -= dy / d * pa * dt;
+        b.vx += dx / d * pb * dt; b.vy += dy / d * pb * dt;
+      }
       if (allied(a, b)) {
         if (!inRange) {
           a.vx += dx / d * ALLY_PULL * dt; a.vy += dy / d * ALLY_PULL * dt;
           b.vx -= dx / d * ALLY_PULL * dt; b.vy -= dy / d * ALLY_PULL * dt;
         }
       } else if (inRange && !a.wars.has(b.id)) {
+        // War between neighbors. Uses the more worn-out side's attrition. No war if either side has 80+.
+        const attrition = Math.max(a.attrition, b.attrition);
+        if (pax <= 0 && canStartWar(a) && canStartWar(b) && !inTruce(a, b) &&
+            !busySides.has(sideKey(a)) && !busySides.has(sideKey(b)) && Math.random() < dt * NEIGHBOR_WAR_RATE * (1 - attrition / 100)) {
+          // One of the two starts it: only an empire with no war of its own running and no cooldown can.
+          const starters = [a, b].filter(x => x.startedWar === null && x.warCooldown <= 0);
+          if (starters.length) {
+            const starter = starters[Math.floor(Math.random() * starters.length)], target = starter === a ? b : a;
+            startWar(starter, target);
+            if (starter.wars.has(target.id)) {
+              starter.startedWar = target.id;
+              busySides.add(sideKey(starter)); busySides.add(sideKey(target));
+            }
+            continue;
+          }
+        }
         // Joining an existing alliance of n members is half as likely for each member: 1/4 for 2 members, 1/8 for 3, and so on.
         const n = Math.max(a.alliance ? a.alliance.members.size : 1, b.alliance ? b.alliance.members.size : 1);
         if (Math.random() < dt * ALLY_RATE * Math.pow(0.5, n === 1 ? 0 : n)) tryAlly(a, b);
@@ -790,6 +955,21 @@
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
     ctx.restore();
+
+    // Hovered empire's anchor: a dotted line from the circle's center to an X at the anchor, drawn behind the circles.
+    if (hovered && !hovered.dead) {
+      ctx.save();
+      ctx.strokeStyle = INK; ctx.globalAlpha = 1; ctx.lineWidth = 1.5;
+      ctx.setLineDash([2, 4]);
+      ctx.beginPath(); ctx.moveTo(hovered.x, hovered.y); ctx.lineTo(hovered.ax, hovered.ay); ctx.stroke();
+      ctx.setLineDash([]); ctx.lineWidth = 2;
+      const k = 6;
+      ctx.beginPath();
+      ctx.moveTo(hovered.ax - k, hovered.ay - k); ctx.lineTo(hovered.ax + k, hovered.ay + k);
+      ctx.moveTo(hovered.ax + k, hovered.ay - k); ctx.lineTo(hovered.ax - k, hovered.ay + k);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     for (const e of empires) {
       const ease = e.grow * e.grow * (3 - 2 * e.grow);
@@ -912,12 +1092,15 @@
       const hal = allianceOf(hovered);
       if (hovered.master !== null) html += `<br>Puppet of ${root(hovered).name}`;
       if (hovered.contagious > 0) html += "<br>Plague: contagious";
+      if (hovered.startedWar !== null) html += `<br>Started a war with ${byId(hovered.startedWar)?.name ?? "an empire"}`;
+      else if (hovered.warCooldown > 0) html += `<br>War cooldown: ${Math.ceil(hovered.warCooldown)} s`;
       if (coalition && coalition.target === hovered.id) html += "<br>Target of a coalition";
       else if (coalition && inCoalition(hovered)) html += `<br>In the coalition against ${byId(coalition.target)?.name}`;
       const puppets = empires.filter(x => !x.dead && x.master === hovered.id).length;
       if (puppets) html += `<br>Puppets: ${puppets}`;
       if (hal) html += `<br>Alliance: <strong class="ally" style="color:${hal.color}">${hal.name}</strong>` +
-        ` (${hal.members.size} members, cohesion ${Math.round(hal.cohesion)})`;
+        ` (${hal.members.size} members, cohesion ${Math.round(hal.cohesion)})` +
+        (hal.far ? "<br>Allies are far apart: cohesion falling" : "");
       if (hovered.wars.size) html += `<br>At war with ${[...hovered.wars].map(id => byId(id)?.name).filter(Boolean).join(", ")}`;
     }
     if (holding) {
